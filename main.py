@@ -28,6 +28,25 @@ import constants as ct
 st.set_page_config(
     page_title=ct.APP_NAME
 )
+ 
+# 独立カード用のスタイル（タイトル下の挨拶）
+st.markdown(
+    """
+    <style>
+    .greeting-card {
+        background-color: #e9f6e9; /* 薄い緑 */
+        color: #2f7a3a; /* 濃い緑 */
+        padding: 14px 18px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        font-size: 16px;
+        line-height: 1.6;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+ 
 
 # ログ出力を行うためのロガーの設定
 logger = logging.getLogger(ct.LOGGER_NAME)
@@ -64,6 +83,7 @@ cn.display_select_mode()
 
 # AIメッセージの初期表示
 cn.display_initial_ai_message()
+cn.display_app_greeting()
 
 
 ############################################################
@@ -155,3 +175,15 @@ if chat_message:
     st.session_state.messages.append({"role": "user", "content": chat_message})
     # 表示用の会話ログにAIメッセージを追加
     st.session_state.messages.append({"role": "assistant", "content": content})
+
+
+# サイドバーのモード選択と初期案内は components.display_select_mode() と
+# components.display_initial_ai_message() が担うため、ここでは何もしない
+
+
+# 警告メッセージの表示（チャットバブル風にして挨拶と開始位置を揃える）
+# 警告メッセージの表示
+# チャットバブル風に警告を表示（アイコンなし）
+with st.container():
+    # 左側に透明なアイコン（見えない）を配置してチャットバブルの位置を揃える
+    st.markdown("<div style='position:relative; margin-top:8px;'><div style='position:absolute; left:18px; top:6px; font-size:20px; color:transparent;'>⚠︎</div><div style='margin-left:55px; background:#fff3cd; color:#856404; padding:12px; border-radius:8px;'>⚠︎ 具体的に入力したほうが期待通りの回答を得やすいです。</div></div>", unsafe_allow_html=True)

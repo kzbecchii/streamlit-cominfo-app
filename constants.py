@@ -50,11 +50,20 @@ RAG_TOP_FOLDER_PATH = "./data"
 SUPPORTED_EXTENSIONS = {
     ".pdf": PyMuPDFLoader,
     ".docx": Docx2txtLoader,
-    ".csv": lambda path: CSVLoader(path, encoding="utf-8")
+    ".csv": lambda path: CSVLoader(path, encoding="utf-8"),
+    ".txt": lambda path: TextLoader(path, encoding="utf-8"),
 }
 WEB_URL_LOAD_TARGETS = [
     "https://generative-ai.web-camp.io/"
 ]
+
+
+# ==========================================
+# RAG設定系
+# ==========================================
+RETRIEVER_DOCUMENT_COUNT = 5
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
 
 
 # ==========================================
@@ -69,6 +78,7 @@ SYSTEM_PROMPT_DOC_SEARCH = """
     【条件】
     1. ユーザー入力内容と以下の文脈との間に関連性がある場合、空文字「""」を返してください。
     2. ユーザー入力内容と以下の文脈との関連性が明らかに低い場合、「該当資料なし」と回答してください。
+    3. ユーザーが一覧化（例：「一覧」「全員」など）を要求する場合は、関連する全ての候補を漏れなく列挙してください（できる限り短く箇条書き）。
 
     【文脈】
     {context}

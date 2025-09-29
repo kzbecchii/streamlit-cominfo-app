@@ -15,10 +15,12 @@ from dotenv import load_dotenv
 import streamlit as st
 from docx import Document
 from langchain_community.document_loaders import WebBaseLoader
+import csv
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 import constants as ct
+from constants import RETRIEVER_DOCUMENT_COUNT, CHUNK_SIZE, CHUNK_OVERLAP
 
 
 ############################################################
@@ -123,8 +125,8 @@ def initialize_retriever():
     
     # チャンク分割用のオブジェクトを作成
     text_splitter = CharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50,
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
         separator="\n"
     )
 
@@ -135,7 +137,7 @@ def initialize_retriever():
     db = Chroma.from_documents(splitted_docs, embedding=embeddings)
 
     # ベクターストアを検索するRetrieverの作成
-    st.session_state.retriever = db.as_retriever(search_kwargs={"k": 3})
+    st.session_state.retriever = db.as_retriever(search_kwargs={"k": RETRIEVER_DOCUMENT_COUNT})
 
 
 def initialize_session_state():
@@ -217,6 +219,63 @@ def file_load(path, docs_all):
         # ファイルの拡張子に合ったdata loaderを使ってデータ読み込み
         loader = ct.SUPPORTED_EXTENSIONS[file_extension](path)
         docs = loader.load()
+        # CSV の場合、CSVLoader は通常行ごとに Document を返すため、
+        # 社員名簿のような一覧CSVは1つの大きな Document に統合し、
+        # 各行を「列名: 値」の形式で整形して検索に有利なテキストを作成する。
+        if file_extension == '.csv':
+            try:
+                # CSV を開いて、ヘッダーと各行を取得して
+                # 各行ごとに Document を作成する（検索時に複数行を返せるようにする）
+                from langchain.schema import Document as LangDocument
+                row_docs = []
+                with open(path, newline='') as csvfile:
+                    reader = csv.reader(csvfile)
+                    headers = next(reader, None)
+                    if headers:
+                                # CSV の全行を1つの大きなドキュメントに統合して検索精度を高める
+                                merged_rows = []
+                                for row in reader:
+                                    row_dict = {h.strip(): v.strip() for h, v in zip(headers, row)}
+                                    dept = row_dict.get('部署') or row_dict.get('部門') or ''
+                                    name = row_dict.get('氏名（フルネーム）') or row_dict.get('氏名') or ''
+                                    role = row_dict.get('役職') or row_dict.get('職位') or ''
+                                    # 各行を「所属部署はXで、氏名はY、役職はZ。その他: 列名: 値、...」のような自然文にする
+                                    other_pairs = [f"{h.strip()}: {v.strip()}" for h, v in zip(headers, row) if h.strip() not in ['部署', '氏名（フルネーム）', '氏名', '役職', '職位']]
+                                    prefix_parts = []
+                                    if dept:
+                                        prefix_parts.append(f"所属部署は{dept}")
+                                    if name:
+                                        prefix_parts.append(f"氏名は{name}")
+                                    if role:
+                                        prefix_parts.append(f"役職は{role}")
+                                    if other_pairs:
+                                        other_text = '、'.join(other_pairs)
+                                        line_text = '、'.join(prefix_parts + [f"その他: {other_text}"])
+                                    else:
+                                        line_text = '、'.join(prefix_parts)
+                                    merged_rows.append(line_text)
+                                # すべての行を改行で結合して1つの Document にする
+                                if merged_rows:
+                                    content = '\n'.join(merged_rows)
+                                    md = {"source": path}
+                                    docs = [LangDocument(page_content=content, metadata=md)]
+                # もし row_docs が作成できていればそれを docs に置き換える
+                if row_docs:
+                    docs = row_docs
+            except Exception:
+                # 失敗した場合は loader の返す docs を使う
+                pass
+
+        # --- ページ番号の正規化: PyMuPDFLoader 等は0始まりで page メタデータを返す場合があるため、
+        #     ここで page が存在する場合は 1 加算して常に 1 始まりで保存する。
+        for d in docs:
+            if hasattr(d, 'metadata') and isinstance(d.metadata, dict) and 'page' in d.metadata:
+                try:
+                    d.metadata['page'] = int(d.metadata['page']) + 1
+                except Exception:
+                    # 数値変換できない場合はそのままにする
+                    pass
+
         docs_all.extend(docs)
 
 
