@@ -232,36 +232,56 @@ def file_load(path, docs_all):
                     reader = csv.reader(csvfile)
                     headers = next(reader, None)
                     if headers:
-                                # CSV の全行を1つの大きなドキュメントに統合して検索精度を高める
-                                merged_rows = []
-                                for row in reader:
-                                    row_dict = {h.strip(): v.strip() for h, v in zip(headers, row)}
-                                    dept = row_dict.get('部署') or row_dict.get('部門') or ''
-                                    name = row_dict.get('氏名（フルネーム）') or row_dict.get('氏名') or ''
-                                    role = row_dict.get('役職') or row_dict.get('職位') or ''
-                                    # 各行を「所属部署はXで、氏名はY、役職はZ。その他: 列名: 値、...」のような自然文にする
-                                    other_pairs = [f"{h.strip()}: {v.strip()}" for h, v in zip(headers, row) if h.strip() not in ['部署', '氏名（フルネーム）', '氏名', '役職', '職位']]
-                                    prefix_parts = []
-                                    if dept:
-                                        prefix_parts.append(f"所属部署は{dept}")
-                                    if name:
-                                        prefix_parts.append(f"氏名は{name}")
-                                    if role:
-                                        prefix_parts.append(f"役職は{role}")
-                                    if other_pairs:
-                                        other_text = '、'.join(other_pairs)
-                                        line_text = '、'.join(prefix_parts + [f"その他: {other_text}"])
-                                    else:
-                                        line_text = '、'.join(prefix_parts)
-                                    merged_rows.append(line_text)
-                                # すべての行を改行で結合して1つの Document にする
-                                if merged_rows:
-                                    content = '\n'.join(merged_rows)
-                                    md = {"source": path}
-                                    docs = [LangDocument(page_content=content, metadata=md)]
-                # もし row_docs が作成できていればそれを docs に置き換える
-                if row_docs:
-                    docs = row_docs
+                                    # CSV の全行を1つの大きなドキュメントに統合して検索精度を高める
+                                    from collections import defaultdict
+                                    import re
+                                    merged_rows = []
+                                    dept_map = defaultdict(list)
+                                    for row in reader:
+                                        row_dict = {h.strip(): v.strip() for h, v in zip(headers, row)}
+                                        dept = row_dict.get('部署') or row_dict.get('部門') or ''
+                                        name = row_dict.get('氏名（フルネーム）') or row_dict.get('氏名') or ''
+                                        role = row_dict.get('役職') or row_dict.get('職位') or ''
+                                        # 各行を「所属部署はXで、氏名はY、役職はZ。その他: 列名: 値、...」のような自然文にする
+                                        other_pairs = [f"{h.strip()}: {v.strip()}" for h, v in zip(headers, row) if h.strip() not in ['部署', '氏名（フルネーム）', '氏名', '役職', '職位']]
+                                        prefix_parts = []
+                                        if dept:
+                                            prefix_parts.append(f"所属部署は{dept}")
+                                        if name:
+                                            prefix_parts.append(f"氏名は{name}")
+                                        if role:
+                                            prefix_parts.append(f"役職は{role}")
+                                        if other_pairs:
+                                            other_text = '、'.join(other_pairs)
+                                            line_text = '、'.join(prefix_parts + [f"その他: {other_text}"])
+                                        else:
+                                            line_text = '、'.join(prefix_parts)
+                                        # 1) merged_rows に追加
+                                        merged_rows.append(line_text)
+                                        # 2) 部署ごとの集計にも追加
+                                        if dept:
+                                            dept_map[dept].append(line_text)
+                                    # すべての行を改行で結合して1つの Document にする
+                                    if merged_rows:
+                                        content = '\n'.join(merged_rows)
+                                        md = {"source": path}
+                                        docs = [LangDocument(page_content=content, metadata=md)]
+                                    # ▼ 追加: 部署ごとのまとめドキュメント（要約行つき）を作成
+                                    for d, lines_list in dept_map.items():
+                                        # 氏名だけを抽出して1行要約を作る
+                                        names = []
+                                        for ln in lines_list:
+                                            m = re.search(r"氏名は(.+?)(、|$)", ln)
+                                            if m:
+                                                names.append(m.group(1))
+                                        header = f"{d}の従業員一覧（{len(names)}名）: " + "、".join(names)
+
+                                        dept_doc = LangDocument(
+                                            page_content = header + "\n" + "\n".join(lines_list),
+                                            metadata = {"source": path, "dept": d, "doc_type": "dept_summary"}
+                                        )
+                                        docs.append(dept_doc)
+                # 統合ドキュメントを優先して使用する（row_docs による上書きは行わない）
             except Exception:
                 # 失敗した場合は loader の返す docs を使う
                 pass
