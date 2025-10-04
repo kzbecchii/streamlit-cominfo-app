@@ -62,7 +62,7 @@ WEB_URL_LOAD_TARGETS = [
 # RAG設定系
 # ==========================================
 RETRIEVER_DOCUMENT_COUNT = 5
-CHUNK_SIZE = 1200
+CHUNK_SIZE = 1300
 CHUNK_OVERLAP = 50
 
 
